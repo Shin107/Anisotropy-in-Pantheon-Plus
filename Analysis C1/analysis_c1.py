@@ -6,9 +6,10 @@ import pandas as pd
 from astropy.coordinates import angular_separation as ang 
 import astropy.units as u
 import sys
+import pickle
 usage = 'usage: %prog [options]'
 parser = OptionParser(usage)
-
+import sys
 ###note before using the code-
 
 #use of option parser
@@ -22,14 +23,14 @@ parser = OptionParser(usage)
 # --dipole can be used when you need to find dipole direction as well with the minimzed parameters
 # --scand is used for estimating confidence intervals on paramters only in shell analysis 
 
-
-parser.add_option( "-e","--evaluate", action = "store", dest="EVAL", default=3, help = "What evaluation needs to be done, 1: LCDM , 2: Kinematic Taylor, 3:  Dipole in deceleration parameter Kinematic  , 4:  Dipole in Hubble parameter Kinematic, 5: H0 as well as Q0 dipole ?, 6: Qduadropolar Hubble analysis?")
-parser.add_option("-d", "--details", action="store", type="int", default=4,dest="DET", help="1: Do pheno Q fit with JLA only. 2: Fit for a non scale dependent dipolar modulation in Q. 3: Fit for a top hat scale dependent dipolar modulation in Q. 4. Fit for an exponentially falling scale dependent dipolar modulation in Q. 5. Fit for a linearly falling scale dependent dipolar modulation in Q. ")
+ray.init(_metrics_export_port=None)
+parser.add_option( "-e","--evaluate", action = "store", dest="EVAL", type='int',default=4, help = "What evaluation needs to be done, 1: LCDM , 2: Kinematic Taylor, 3:  Dipole in deceleration parameter Kinematic  , 4:  Dipole in Hubble parameter Kinematic, 5: H0 as well as Q0 dipole ?, 6: Qduadropolar Hubble analysis?")
+parser.add_option("-d", "--details", action="store", type="int", default=2,dest="DET", help="1: Do pheno Q fit with JLA only. 2: Fit for a non scale dependent dipolar modulation in Q. 3: Fit for a top hat scale dependent dipolar modulation in Q. 4. Fit for an exponentially falling scale dependent dipolar modulation in Q. 5. Fit for a linearly falling scale dependent dipolar modulation in Q. ")
 parser.add_option("-m", "--method", action="store", type="int", default=7, dest="MET", help="1:Nelder-Mead 2: SLSQP 3: Powell.4: Trust-Constraint 5: TNC 6: Cobyla 7: L-BFGS-B 8: Newton-CG 9: BFGS 10: CG 11:trust-exact")
-parser.add_option( "-z","--redshift", action = "store",type="int", default=7, dest="ZINDEX", help = "Which Redshift to use  7: zHEL 8: zCMB 0: zHD 9: zLG? ")
-parser.add_option("-r", "--reversebias", action = "store_true", default=True, dest="REVB", help = "Reverse the bias corrections")
+parser.add_option( "-z","--redshift", action = "store",type="int", default=0, dest="ZINDEX", help = "Which Redshift to use  7: zHEL 8: zCMB 0: zHD 9: zLG? ")
+parser.add_option("-r", "--reversebias", action = "store_true", default=False, dest="REVB", help = "Reverse the bias corrections")
 
-parser.add_option( "--fixastro", action = "store", dest="FIXA", default=0, help = " 0: Doesnt fix astrophysical paramete,( Use only for shell analysis ) fix astrophysical paramters for 1: deceleration paramter 2: hubble parameter?")
+parser.add_option( "--fixastro", action = "store", dest="FIXA", default=0, type="int", help = " 0: Doesnt fix astrophysical paramete,( Use only for shell analysis ) fix astrophysical paramters for 1: deceleration paramter 2: hubble parameter?")
 parser.add_option("-t", "--taylor", action = "store_true", default=True, dest="TAY", help = "Remove high z redhsit for taylor analysis")
 parser.add_option( "--dipoledir", action = "store", type="int", default=1, dest="DIPDIR", help = "DIPOLE DIRECTION FIX TO? 1:CMB directon ")
 parser.add_option( "--dipole", action = "store_true", default=False, dest="DIP", help = "Need to estimate dipole direction too?")
@@ -45,8 +46,28 @@ parser.add_option("--sC", action = "store",type="float", default=0.055, dest="sC
 parser.add_option("--sX", action = "store",type="float", default=0.965, dest="sX0")
 parser.add_option("--cc", action = "store",type="float", default=-0.042, dest="C0")
 
-(options, args) = parser.parse_args()
+parser.add_option("--age_bias", action="store_true", default=False, dest="AGEBIAS", help="Apply progenitor age bias correction")
+parser.add_option("--age_bias_cosmo",action='store',type = "string", default="w0wa", dest="AGEBAST", help="Use w0-wa,LCDM,CDM , progenitor age bias correction")
 
+(options, args) = parser.parse_args()
+if options.AGEBIAS:
+    print("Applying progenitor age bias correction using ",options.AGEBAST," cosmology")
+    if options.AGEBAST == "w0wa":
+        with open(f'cs_median.pkl', 'rb') as f:
+            cs_bias = pickle.load(f)
+    elif options.AGEBAST == "LCDM":
+        with open(f'cs_LCDM.pkl', 'rb') as f:
+            cs_bias = pickle.load(f)   
+    elif options.AGEBAST == "CDM":
+        with open(f'cs_CDM.pkl', 'rb') as f:
+      ysis_C1/C1_QM_profile_tomo.py:273: RuntimeWarning: invalid value encountered in subtract
+(Minimizer pid=1615272)   return z*(1.+0.5*(1.-q0)*z -1./6.*(1. - q0 - 3.*q0**2. + j0)*z**2.)*(1+Z[:,7])/(1+z)
+(Minimizer pid=1615272) /Storage/animesh/Analysis_C1/C1_QM_profile_tomo.py:263: RuntimeWarning: overflow encountered in multiply
+(Minimizer pid=1615272)   k = 5.*np.log10( c/H0 * dLPhenoF3(Zc, Q0, J0)) + 25.
+      cs_bias = pickle.load(f)
+    else:
+        print("Unknown cosmology for age bias correction")
+        sys.exit(1)    
 
 dctdet={2:"Non scalar",3:"Flat",4:"Exponential",5:"Linear",6:'Power',8:'mix'}
 
@@ -142,7 +163,7 @@ H0=70
 
 
 if options.FIXA>0 and options.DET!=2:
-    print('Error: need to give correction functional form for shell analysis')
+    print(f'Error: need to give correction functional form for shell analysis current options.DET is {options.DET} but it needs to be 2')
     sys.exit(1)
     
 def Minimizer(zlim1=0,dip=None,init=None ,final=None):
@@ -154,6 +175,9 @@ def Minimizer(zlim1=0,dip=None,init=None ,final=None):
     if options.REVB: ##reversing bias corrrections
         print ('reversing bias')
         Z['m_b_corr'] = Z['m_b_corr'] + df['biasCor_m_b']
+    if options.AGEBIAS:
+        print ('applying progenitor age bias correction')
+        Z['m_b_corr'] = Z['m_b_corr'] - 0.03*cs_bias(Z['zHEL'])
     #Z=Z.sort_values('zHEL')
     
     #Z=Z[Z['zHEL']<0.8]
@@ -313,9 +337,7 @@ def Minimizer(zlim1=0,dip=None,init=None ,final=None):
         return np.cos(np.deg2rad(dec1))*np.cos(np.deg2rad(dec2))*np.cos(np.deg2rad(ra1) - np.deg2rad(ra2))+np.sin(np.deg2rad(dec1))*np.sin(np.deg2rad(dec2))
         
     def RESVF3(M0, Q0, J0,S0=None,L0=None  ): #Total residual, \hat Z - Y_0
-
         Y0 = np.array([M0])
-
         mu = MUZ(Z[:,ZINDEX], Q0, J0,S0,L0); ## s0 and l0 for future, when snap and lerk paramter can be added 
         return  np.hstack( [ (Z[i,1] -np.array([mu[i]]) - Y0 ) for i in range(N) ] ) 
     def RESVF3_H0Dip(Hm, Q0, J0 ,Hd,ra=radip,dec=decdip,DS=np.inf,stype = STYPE):#Total residual, \hat Z - Y_0
@@ -344,6 +366,7 @@ def Minimizer(zlim1=0,dip=None,init=None ,final=None):
         Zc = Z[:,ZINDEX]
         M0=-19.25
         #Hd=0
+
 
     
         cosangle = cdAngle(ra,dec, Z[:,5], Z[:,6])
@@ -576,8 +599,9 @@ def Minimizer(zlim1=0,dip=None,init=None ,final=None):
             function=RESVF3_noscdep
         else:
             function=RESVF3_H0Dip_noscdep
-    
-    name+='_'+str(function)  
+        
+
+    #name+='_'+str(function)  
     def m2loglike(pars , RV = 0):
         if RV != 0 and RV != 1 and RV != 2:
             raise ValueError('Inappropriate RV value')
@@ -643,7 +667,7 @@ def Minimizer(zlim1=0,dip=None,init=None ,final=None):
         pre_found_best=np.hstack([pre_found_best,ar])
         
         if options.EVAL==3:
-            ar=[-6]
+            ar=[-6.5]
             bounds+=((None,None),)
             pre_found_best=np.hstack([pre_found_best,ar])
             if  options.DET >1:
@@ -764,6 +788,8 @@ Z=Z.sort_values('zHEL')
 Z=Z[Z['zHEL']<0.8]
 N=len(Z)
 median=[]
+z_dict= {7:'HEL',8:'CMB',9:'LG',0:'HD'}
+
 if options.FIXA>0: 
     
     if not options.SCANSHELLDIPOLE:
@@ -789,18 +815,16 @@ if options.FIXA>0:
                 ar.append([m[0].x[2],m[0].x[3]])
             
                 
-        print(f'x_true={ar2}\n ',f'MLE_true={mle}')
-        print(ar)
-        print(f'median={median}\n ')
-
+        #print(f'x_true={ar2}\n ',f'MLE_true={mle}')
+        print(f'qd_{z_dict[options.ZINDEX]}={ar2}\n ',f'MLE_{z_dict[options.ZINDEX]}={mle}')
+        np.save('qd_'+z_dict[options.ZINDEX]+'_age_bias.npy',[ar2,mle])
         if options.DIP:
             
             print(ar)
     else:
-        
-         minimized_vals=[-38.86159740622688, -17.75354867779298, -8.208273573258992, -4.939017455520776, -4.178077420293118, -2.0032140695565652, -1.615233331256633, -0.7150906154827132, -0.1989928683734748, -0.044427387791486014, -0.14111061623341775, -0.3974002660681623, -0.0460520876681514, -0.11531701124053621, -0.2090319705703124, -0.011274688511929136, -0.057884518346162525]
-         MLE=[342.76973980211324, -57.65151182449563, -51.79681046385484, -87.71259784624718, -84.76411854459579, -97.83179766640306, -105.91089817848456, -107.31134428317338, -106.5501546363131, -85.36903374173403, -97.60385279482867, -102.87869020484587, -93.4912505041787, -109.57416129361042, -84.22649126879598, -63.06914507196426, -54.34585282946863]
 
+         minimized_vals = np.load('qd_'+str(z_dict[options.ZINDEX])+'_age_bias_C1.npy')[0]
+         MLE = np.load('qd_'+str(z_dict[options.ZINDEX])+'_age_bias_C1.npy')[1]
          shell_width=100
          init=0
          ar=[]
@@ -853,16 +877,21 @@ if options.FIXA>0:
              fun.append(ar2)
              
          print('MLE=',fun,';x_ar=',ar)
+         np.save('qd_'+z_dict[options.ZINDEX]+'_age_bias_C1_scan.npy',[ar,fun])
          
              
      
 else:
+    min_res = []
     zlim=[0.00587, 0.00907, 0.01351, 0.01613 ,0.01826, 0.02121, 0.02324, 0.02531, 0.02873,
  0.03139, 0.03486, 0.04146, 0.05057, 0.06976, 0.10762] ## for tomographic cuts in steps of 50
-    zlim=[0.00937]
+    zlim=[0.00587]
+    zlim = [0.00937]
     for i in zlim:
         m=Minimizer(zlim1=i)
         print(m)
+        min_res.append(m[0])
+print('Minimum results:',min_res)
         
 
 

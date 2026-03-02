@@ -23,6 +23,7 @@ import time
 import sys
 import pandas as pd
 from astropy.coordinates import angular_separation as ang 
+import random
 import matplotlib.pyplot as plt
 import astropy.units as u
 usage = 'usage: %prog [options]'
@@ -40,34 +41,38 @@ parser = OptionParser(usage)
 # --dipole can be used when you need to find dipole direction as well with the minimzed parameters
 # --scanshelldip is used for estimating confidence intervals on paramters only in shell analysis (Use only with -e 7 or 8)
 
-parser.add_option("-d", "--details", action="store", type="int", default=1,dest="DET", help=" 1: Fit for a non scale dependent dipolar modulation in Q.  2. Fit for an exponentially falling scale dependent dipolar modulation in Q. ")
-parser.add_option( "-r", "--reversebias", action = "store_true", default=True, dest="REVB", help = "Reverse the bias corrections")
+parser.add_option("-d", "--details", action="store", type="int", default=2,dest="DET", help=" 1: Fit for a non scale dependent dipolar modulation in Q.  2. Fit for an exponentially falling scale dependent dipolar modulation in Q. ")
+parser.add_option( "-r", "--reversebias", action = "store_true", default=False, dest="REVB", help = "Reverse the bias corrections")
 parser.add_option( "-s", "--scan", action = "store_true", default=False, dest="SCAN", help = "Whether to do a scan")
 
 parser.add_option( "--method", action="store", type="int", default=7, dest="MET", help="1:Nelder-Mead 2: SLSQP 3: Powell. ")
 
 parser.add_option( "--dipole", action = "store_true", default=False, dest="DIP", help = "Need to estimate dipole too?")
 parser.add_option( "--dipoledir", action = "store", type="int", default=1, dest="DIPDIR", help = "DIPOLE DIRECTION FIX TO?")
-parser.add_option( "-e","--evaluate", action = "store",type='int', dest="EVAL", default=7, help = "What evaluation needs to be done, 1: LCDM , 2: z Taylor , 3: z Dipole Taylor , 4: H0 dipole, 5: H0,Q0 dipole ,6: Quadrupolar,  7: Shell analysis for deceleration parameter ,8: Shell anaysis for hubble parameter")
+parser.add_option( "-e","--evaluate", action = "store",type='int', dest="EVAL", default=4, help = "What evaluation needs to be done, 1: LCDM , 2: z Taylor , 3: z Dipole Taylor , 4: H0 dipole, 5: H0,Q0 dipole ,6: Quadrupolar,  7: Shell analysis for deceleration parameter ,8: Shell anaysis for hubble parameter")
 parser.add_option( "--arg1", action = "store", type="float", default=0, dest="ARG1", help = "ARGUMENT1?")
 parser.add_option( "--arg2", action = "store", type="float", default=0, dest="ARG2", help = "ARGUMENT2?")
-parser.add_option("--zlim", action = "store",type="float", default=0.00937, dest="ZLIM")
+parser.add_option("--zlim", action = "store",type="float", default=0.023, dest="ZLIM")
 parser.add_option( "--zind", action = "store", type='int',default=9, dest="ZINDEX", help = "Which Redshift to use  9: zHEL 10: zCMB 0: zHD 11: zLG?")
 parser.add_option("--scanshelldip", action="store_true",default=False, dest="SCANSHELLDIPOLE")
-
-
-
-parser.add_option("--fixpars", action = "store_true", default=True, dest="FIXPARS",help='Fixing parmater values for hubble parameter estimation? ')
+# 2.404e-01  1.455e-01 -6.689e-02  9.661e-01
+#              2.901e+00 -4.492e-02  5.568e-02  4.471e-01 -1.049e+00
+parser.add_option("-t", "--taylor", action = "store_true", default=True, dest="TAY", help = "Remove high z redhsit for taylor analysis")
+parser.add_option( "--debug", action = "store_true", default=False, dest="DEBUG", help = "Debug mode?")
+parser.add_option("--age_bias", action="store_true", default=False, dest="AGEBIAS", help="Apply progenitor age bias correction")
+parser.add_option("--age_bias_cosmo",action='store',type = "string", default="w0wa", dest="AGEBAST", help="Use w0-wa,LCDM,CDM , progenitor age bias correction")
+parser.add_option("--fixpars", action = "store_true", default=False, dest="FIXPARS",help='Fixing parmater values for hubble parameter estimation? ')
 # if fixpars is TRUE it fixes parameter values to following 
-parser.add_option("--aa", action = "store",type="float", default=0.15, dest="A0")
-parser.add_option("--bb", action = "store",type="float", default=3, dest="B0")
-parser.add_option("--xx", action = "store",type="float", default=-0.075, dest="X0")
-parser.add_option("--sM", action = "store",type="float", default=0.2, dest="sM0")
-parser.add_option("--sC", action = "store",type="float", default=0.055, dest="sC0")
-parser.add_option("--sX", action = "store",type="float", default=0.965, dest="sX0")
-parser.add_option("--cc", action = "store",type="float", default=-0.042, dest="C0")
+parser.add_option("--aa", action = "store",type="float", default=0.145, dest="A0")
+parser.add_option("--bb", action = "store",type="float", default=2.9, dest="B0")
+parser.add_option("--xx", action = "store",type="float", default=-0.067, dest="X0")
+parser.add_option("--sM", action = "store",type="float", default=0.24, dest="sM0")
+parser.add_option("--sC", action = "store",type="float", default=0.0556, dest="sC0")
+parser.add_option("--sX", action = "store",type="float", default=0.966, dest="sX0")
+parser.add_option("--cc", action = "store",type="float", default=-0.0449, dest="C0")
 
-
+parser.add_option('--ul',action='store',type='float',default=0.8,dest='UL',help='Upper limit redshift')
+parser.add_option('--zero_hd',action='store_true',default=False,dest='ZEROHD',help='Set dipole in H to zero?')
 (options, args) = parser.parse_args()
 
 
@@ -103,7 +108,13 @@ elif options.MET==10:
     met='CG'
 elif options.MET==11:
     met='trust-exact'
+raSUN_LG= 333.53277784*u.deg
+decSUN_LG = 49.33111122*u.deg
+vLG_SUN= 299 #km/s
 
+
+raLG_SUN= 153.53277784*u.deg
+decLG_SUN = -49.33111122*u.deg
 c = 299792.458 # km/s
 H0 = 70 #(km/s) / Mpc
 
@@ -116,10 +127,31 @@ decLG_SUN = 49.33111122*u.deg
 
 vLG_SUN= 299 #km/s
 
+
+H0=70
+
+
 if  options.EVAL>6 and options.DET!=1:
     print('Error: need to give correction functional form for shell analysis')
     sys.exit(1)
+FRAME_DICT={9:'zHEL',10:'zCMB',0:'zHD',11:'zHD2'}
+
 path='/Storage/animesh/DATA_PPLUS'
+print(f"Running the code for {FRAME_DICT[options.ZINDEX]} redshift with zlim {options.ZLIM} using {met} method for evaluation {options.EVAL} with dipole details {options.DET} ")
+if options.AGEBIAS:
+    print("Applying progenitor age bias correction using ",options.AGEBAST," cosmology")
+    if options.AGEBAST == "w0wa":
+        with open(f'{path}/cs_median.pkl', 'rb') as f:
+            cs_bias = pickle.load(f)
+    elif options.AGEBAST == "LCDM":
+        with open(f'{path}/cs_LCDM.pkl', 'rb') as f:
+            cs_bias = pickle.load(f)   
+    elif options.AGEBAST == "CDM":
+        with open(f'{path}/cs_CDM.pkl', 'rb') as f:
+            cs_bias = pickle.load(f)
+    else:
+        print("Unknown cosmology for age bias correction")
+        sys.exit(1)   
 def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     A0=options.A0
     B0=options.B0
@@ -138,10 +170,14 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     df=pd.read_csv( path+'/Pantheon+SH0ES.dat',delimiter=' ')
     if options.REVB:
         print ('reversing bias')
-        Z['mB'] = Z['mB'] + df['biasCor_m_b']   
+        Z['mB'] = Z['mB'] + df['biasCor_m_b'] 
+    if options.AGEBIAS:
+        print("Applying progenitor age bias correction using ",options.AGEBAST," statistics")
+        Z['mB'] = Z['mB'] - 0.03*cs_bias(Z['zHEL'])
     Z=Z.loc[index]
     Z=Z.reset_index(drop=True)
-    Z=Z[Z['zHEL']<0.8]
+    if options.TAY:
+        Z=Z[Z['zHEL']<options.UL]
     if zlim1!=0:
         print("Using the zlim provided",zlim1)
         Z=Z[Z['zHEL']>zlim1]
@@ -176,6 +212,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
             name=name+"CMB_"
     else:
         name=name+"_FLOAT_DIP"
+    print(len(Z))
     def cdAngle(ra1, dec1, ra2, dec2):
         return np.cos(np.deg2rad(dec1))*np.cos(np.deg2rad(dec2))*np.cos(np.deg2rad(ra1) - np.deg2rad(ra2))+np.sin(np.deg2rad(dec1))*np.sin(np.deg2rad(dec2))
         
@@ -234,7 +271,9 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     
     #phenomenological taylor series expansion for dL from Visser et al
     #filename=f'TESTING.txt'
-    
+    if ZINDEX==11:
+        radip= 162.95389715
+        decdip=-25.96734154
     def dLPhenoF3(z, q0, j0):
         return z*(1.+0.5*(1.-q0)*z -1./6.*(1. - q0 - 3.*q0**2. + j0)*z**2.) *(1+Z[:,9])/(1+z)
     
@@ -249,6 +288,8 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     def RESVF3_H0Dip(  Hm,A, X0,B, C0,Q0, J0 , Hd,ra=radip,dec=decdip,stype = STYPE):#Total residual, \hat Z - Y_0
         M0=-19.25
         Zc = Z[:,ZINDEX]
+        if options.ZEROHD:
+            Hd=0
         if options.FIXPARS:
             A=A0
             B=B0
@@ -285,6 +326,8 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
         #print('/n/n/n\n\n\n\nH0/n/:',H0)
         Y0A = np.array([ M0-A*X0+B*C0, X0, C0 ])
         mu = MUZ_H0Dip(Z[:,ZINDEX], Q0, J0,H0) ;
+        if options.DEBUG:
+            print('Hd',Hd,'ra',ra,'dec',dec)
         return np.hstack( [ (Z[i,1:4] -np.array([mu[i],0,0]) - Y0A ) for i in range(N) ] )  
    
     def RESVF3_noscdep(qd, M0, ra=radip, dec=decdip, Q0=3.796e-01 , J0=-1.007e+00, A=0.15, B=3.0, X0=-0.075, C0=-0.042, stype=STYPE):
@@ -296,23 +339,43 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
             X0=X00
             C0=C00
             if ZINDEX == 10:
-                Q0 = 1.274e-01 
-                J0=-7.807e-01
+                if not options.AGEBIAS:
+                    Q0 = 1.274e-01 
+                    J0=-7.807e-01
+                else: 
+                    Q0 = 4.682e-01
+                    J0 = -2.795e-01
+
                 
             if ZINDEX == 0:
-                Q0 = -1.623e-01
-                J0 = -4.772e-01
+                if not options.AGEBIAS:
+                    Q0 = -1.623e-01
+                    J0 = -4.772e-01
+                else: 
+                    Q0 = 3.385e-01
+                    J0 = -3.335e-01
             if ZINDEX == 11:
-                Q0 = 4.471e-01 
-                J0=-1.049e+00
+
+                if not options.AGEBIAS:
+                    Q0 = 4.471e-01 
+                    J0=-1.049e+00
+                else: 
+                    Q0  = 7.691e-01  
+                    J0 = 6.295e-02
+
             if ZINDEX==9:
-                Q0=3.796e-01 
-                J0=-1.007e+00
+                if not options.AGEBIAS:
+                    Q0=3.796e-01 
+                    J0=-1.007e+00
+                else: 
+                    Q0 = 7.063e-01 
+                    J0 = -2.107e-02
+                
         else:
             print('Need to fix params')
             sys.exit()
-        #Q0=-0.55
-        #J0=1
+        # Q0=-0.55
+        # J0=1
         Zc = Z[:, ZINDEX]
         cosangle = cdAngle(ra, dec, Z[:, 6], Z[:, 7])
         if stype == 'NoScDep':
@@ -370,9 +433,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     #covmatcomponents = [ "cal", "model", "bias", "dust", "sigmalens", "nonia" ]
     
     
-    if ZINDEX==11:
-        radip= 162.95389715
-        decdip=-25.96734154
+
 
     name+=str(INDEX_DCT[ZINDEX])+'_'
     print("Using Redshift:",INDEX_DCT[ZINDEX])
@@ -411,7 +472,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
 
     
     def RESVF3( M0,  A ,X0, B , C0,Q0,J0,S0=None,L0=None ): #Total residual, \hat Z - Y_0*A
-        print('M0,A,X0,B,C0,Q0,J0',M0,A,X0,B,C0,Q0,J0)
+        #print('M0,A,X0,B,C0,Q0,J0',M0,A,X0,B,C0,Q0,J0)
         Y0A = np.array([ M0-A*X0+B*C0, X0, C0 ])
         mu = MUZ(Z[:,ZINDEX], Q0, J0,S0,L0);
         return np.hstack( [ (Z[i,1:4] -np.array([mu[i],0,0]) - Y0A ) for i in range(N) ] )  
@@ -419,6 +480,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     
     
     def RESVF3Dip(M0,  A ,X0, B , C0,Q0,J0, QD, DS=np.inf,ra=radip,dec=decdip, stype = STYPE): #Total residual, \hat Z - Y_0*A
+        #QD=0   
 
         Y0A = np.array([ M0-A*X0+B*C0, X0, C0 ])
         cosangle = cdAngle(ra, dec, Z[:,6], Z[:,7])
@@ -544,7 +606,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
     else:
         print('Error: Wrong eval value')
         sys.exit(1)
-
+    print("Using function:",function.__name__)
 
     def m2loglike(pars , RV = 0):
         
@@ -570,6 +632,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
                 return 13995*10.**20
 
             if options.EVAL<=6:
+                #print([pars[i] for i,val in enumerate(pars) if i!=1 and i!=4 and i!=7])
                 res = function(*[pars[i] for i,val in enumerate(pars) if i!=1 and i!=4 and i!=7])
             else:
                 #print('EVAL>6')
@@ -582,6 +645,14 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
                     
             if RV==0:
                 m2loglike = part_log + part_exp
+                if options.DEBUG:
+                    if random.random() < 0.2:  # 20% chance to print at each step
+                        print() 
+                        print('Parameters:',pars)
+                        print('Logpart:',part_log)
+                        print('Exppart:',part_exp)
+                        print('Total:',m2loglike)
+                        print()
                 return m2loglike 
             elif RV==1: 
                 return part_exp 
@@ -668,7 +739,7 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
             
             
         if options.DIP:
-            ar=[133.4839835,  3.80090097e+01]
+            ar=[168,  -7]
             if ZINDEX==11:
                ar=[1.44154014e+02, -1.10001955e+01]
             
@@ -691,11 +762,15 @@ def Minimizer(init=None,final=None,zlim1=0,qd=None ,qm=None,dip=None):
 
         
         
-    
+    file_path = f'/Storage/animesh/Analysis_C2/pre_found_best_{options.ZINDEX}.txt'
+    with open(file_path, 'r') as file:
+        content = file.read()
+    #pre_found_best=np.array(eval(content))
+    print(pre_found_best)
     if not options.SCANSHELLDIPOLE:   
-        MLE = optimize.minimize(m2loglike, pre_found_best , method = met, tol=10**-12 , options={'maxiter':99205000},bounds=bounds)
+        MLE = optimize.minimize(m2loglike, pre_found_best , method = met, tol=10**-10 , options={'maxiter':99205000},bounds=bounds)
     else:
-        MLE = optimize.minimize(m2loglike, pre_found_best , method = met, tol=10**-12 , options={'maxiter':1950000},bounds=bounds,constraints=({'type':'eq','fun':No_dip}))
+        MLE = optimize.minimize(m2loglike, pre_found_best , method = met, tol=10**-11 , options={'maxiter':1950000,'maxfun': 1900000},constraints=({'type':'eq','fun':No_dip}))
         
 
     return MLE ,name 
@@ -731,7 +806,8 @@ if options.EVAL>6:
         print(f'No_sc_dep_dipole={ar2}')
         #print(ar)
         print(f'MLE_c2={mle}')
-        print(ar)
+        np.save(f'MLE_{options.ZINDEX}',mle)
+        np.save(f'z_ar_{options.ZINDEX}',ar2)
         # Results already found
     else:
         if options.MET!=4 :
@@ -745,7 +821,8 @@ if options.EVAL>6:
         init = 0
         x_true=[5.145070391343882, 4.74054922568041, 0.1421131262054647, 1.3351991877991178, 0.4262636415409181, 0.834373061922369, -0.32427117218981444, 0.010507648175100599, -0.16615594321350236, 0.0917091713301366, -0.2010308003198331, -0.12428593433167634, -0.12060829452892172, 0.013860950053726201, -0.13061229290380963, 0.04436252583713372, -0.04266619381074778]
         MLE_true=[272.2662419229142, 136.8774955683238, 121.70179710765206, 68.0022674756948, 55.09127999424521, 81.08761959986464, 7.880916617944251, -46.69719050167066, -54.637326585811394, -28.10294066578558, -28.079728604071477, -23.406030644590004, -29.14229851545423, -59.51726521767043, 13.234345736285775, -14.213504086941299, -13.049165132152211]
-
+        MLE_true = np.load(f'Tomo_vals/MLE_{str(options.ZINDEX)}.npy')
+        x_true = np.load(f'Tomo_vals/z_ar_{str(options.ZINDEX)}.npy')
 
         minimized_vals = x_true
         if options.EVAL==7:
@@ -771,6 +848,7 @@ if options.EVAL>6:
 
                 ar.append(dipole)
                 fun.append(ar2)
+                
 
         else:
             print(num_splits)
@@ -798,6 +876,8 @@ if options.EVAL>6:
                 fun.append(ar2)
 
         print('MLE=', fun, ';x_ar=', ar)
+        np.save(f'Scan_MLE_{options.ZINDEX}', fun)
+        np.save(f'Scan_z_ar_{options.ZINDEX}', ar)
 else:
 
         lst=[]
@@ -812,16 +892,20 @@ else:
     
         i=options.ZLIM
 
-
+        ar = [0.023]
         m=Minimizer(zlim1=i)
         print(i,m)
+        print(m[0].x,m[0].fun,m[0].success)
 
-        print(m[0].x)
 
-        
-
-        
-        print('ZIND='+str(options.ZINDEX)+'_DET='+str(options.DET)+'_EVAL='+str(options.EVAL)+'_DIP='+str(options.DIP)+'zLIM='+str(options.ZLIM)+'revb='+str(options.REVB)+'met='+str(options.MET))
+# filename = f'results_zcum_{FRAME_DICT[options.ZINDEX]}_zLIM{options.ZLIM}.txt'
+# with open(filename, 'w') as f:
+#     print('Results for ZINDEX=',options.ZINDEX,' DET=',options.DET,' EVAL=',options.EVAL,' DIP=',options.DIP,' zLIM=',options.ZLIM,' REVB=',options.REVB,' MET=',options.MET,file=f)
+#     print('Best-fit parameters:',file=f)
+#     print(m[0].x,file=f)
+#     print('Minimum -2loglike:',m[0].fun,file=f)
+#     print('Success:',m[0].success,file=f)
+        #print('ZIND='+str(options.ZINDEX)+'_DET='+str(options.DET)+'_EVAL='+str(options.EVAL)+'_DIP='+str(options.DIP)+'zLIM='+str(options.ZLIM)+'revb='+str(options.REVB)+'met='+str(options.MET))
 
 
 

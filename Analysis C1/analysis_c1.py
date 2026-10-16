@@ -60,11 +60,8 @@ if options.AGEBIAS:
             cs_bias = pickle.load(f)   
     elif options.AGEBAST == "CDM":
         with open(f'cs_CDM.pkl', 'rb') as f:
-      ysis_C1/C1_QM_profile_tomo.py:273: RuntimeWarning: invalid value encountered in subtract
-(Minimizer pid=1615272)   return z*(1.+0.5*(1.-q0)*z -1./6.*(1. - q0 - 3.*q0**2. + j0)*z**2.)*(1+Z[:,7])/(1+z)
-(Minimizer pid=1615272) /Storage/animesh/Analysis_C1/C1_QM_profile_tomo.py:263: RuntimeWarning: overflow encountered in multiply
-(Minimizer pid=1615272)   k = 5.*np.log10( c/H0 * dLPhenoF3(Zc, Q0, J0)) + 25.
-      cs_bias = pickle.load(f)
+      
+          cs_bias = pickle.load(f)
     else:
         print("Unknown cosmology for age bias correction")
         sys.exit(1)    
